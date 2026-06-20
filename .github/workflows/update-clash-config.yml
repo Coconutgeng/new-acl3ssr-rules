@@ -1,0 +1,110 @@
+name: Update Clash Config (No Region Groups)
+
+on:
+  schedule:
+    # 每3天运行一次 (UTC 02:00)
+    - cron: '0 2 */3 * *'
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  update-config:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download ACL4SSR_Online_Full_AdblockPlus
+        run: |
+          curl -L -o /tmp/ACL4SSR_Online_Full_AdblockPlus.ini \
+            "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/config/ACL4SSR_Online_Full_AdblockPlus.ini"
+
+      - name: Remove region groups
+        run: |
+          python3 << 'EOF'
+          import re
+
+          input_file = "/tmp/ACL4SSR_Online_Full_AdblockPlus.ini"
+          output_file = "ACL4SSR_Online_Full_NoRegion.ini"
+
+          with open(input_file, "r", encoding="utf-8") as f:
+              lines = f.readlines()
+
+          # 需要移除的地区分组（custom_proxy_group 定义行）
+          region_group_patterns = [
+              r"^custom_proxy_group=🇭🇰 香港节点",
+              r"^custom_proxy_group=🇯🇵 日本节点",
+              r"^custom_proxy_group=🇺🇲 美国节点",
+              r"^custom_proxy_group=🇨🇳 台湾节点",
+              r"^custom_proxy_group=🇸🇬 狮城节点",
+              r"^custom_proxy_group=🇰🇷 韩国节点",
+              r"^custom_proxy_group=🎥 奈飞节点",
+          ]
+
+          # 需要移除的地区节点引用（在其他分组的 select 选项中）
+          region_refs = [
+              r"`\[\]🇭🇰 香港节点`",
+              r"`\[\]🇨🇳 台湾节点`",
+              r"`\[\]🇸🇬 狮城节点`",
+              r"`\[\]🇯🇵 日本节点`",
+              r"`\[\]🇺🇲 美国节点`",
+              r"`\[\]🇰🇷 韩国节点`",
+              r"`\[\]🎥 奈飞节点`",
+          ]
+
+          result_lines = []
+
+          for line in lines:
+              # 跳过地区分组定义行
+              skip = False
+              for pattern in region_group_patterns:
+                  if re.match(pattern, line):
+                      skip = True
+                      break
+              if skip:
+                  continue
+
+              # 移除其他分组中对地区节点的引用
+              cleaned_line = line
+              for ref in region_refs:
+                  cleaned_line = re.sub(ref, "", cleaned_line)
+
+              # 清理连续的空引号或多余的反引号分隔符
+              # 处理 `select`[]A``[]B` 这种情况 -> `select`[]A`[]B`
+              cleaned_line = re.sub(r"``+", "`", cleaned_line)
+
+              # 处理行尾多余的反引号
+              cleaned_line = re.sub(r"`+$", "", cleaned_line).rstrip() + "\n"
+
+              # 如果清理后行为空或只有换行，跳过
+              if cleaned_line.strip() == "":
+                  continue
+
+              result_lines.append(cleaned_line)
+
+          # 写入输出文件
+          with open(output_file, "w", encoding="utf-8") as f:
+              f.writelines(result_lines)
+
+          print(f"Processed and saved to {output_file}")
+          EOF
+
+      - name: Verify output
+        run: |
+          echo "=== Output file content ==="
+          cat ACL4SSR_Online_Full_NoRegion.ini
+          echo "=== End of content ==="
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ACL4SSR_Online_Full_NoRegion.ini
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update ACL4SSR config: remove region groups [$(date -u +%Y-%m-%d)]"
+            git push
+          fi
