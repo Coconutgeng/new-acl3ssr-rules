@@ -1,4 +1,4 @@
-name: Update Clash Config (No Region Groups)
+name: Update Clash Config (No Region Groups + Bilibili Node Select)
 
 on:
   schedule:
@@ -21,7 +21,7 @@ jobs:
           curl -L -o /tmp/ACL4SSR_Online_Full_AdblockPlus.ini \
             "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/config/ACL4SSR_Online_Full_AdblockPlus.ini"
 
-      - name: Remove region groups
+      - name: Remove region groups and add Bilibili node select
         run: |
           python3 << 'PYEOF'
           import re
@@ -67,6 +67,15 @@ jobs:
               if skip:
                   continue
               
+              # 在哔哩哔哩行添加节点选择选项
+              if line.startswith("custom_proxy_group=📺 哔哩哔哩"):
+                  # 原格式: custom_proxy_group=📺 哔哩哔哩`select`[]🎯 全球直连`[]🇨🇳 台湾节点`[]🇭🇰 香港节点
+                  # 新格式: custom_proxy_group=📺 哔哩哔哩`select`[]🎯 全球直连`[]🚀 节点选择`[]🇨🇳 台湾节点`[]🇭🇰 香港节点
+                  line = line.replace(
+                      "`select`[]🎯 全球直连",
+                      "`select`[]🎯 全球直连`[]🚀 节点选择"
+                  )
+              
               # 移除地区引用（包括前面的反引号分隔符）
               cleaned = line
               for ref in region_refs:
@@ -79,19 +88,31 @@ jobs:
 
           print(f"✅ 处理完成，已保存到 {output_file}")
 
-          # 验证：检查是否还有残留
+          # 验证：检查是否还有地区分组残留
           remaining = []
           for i, line in enumerate(result_lines, 1):
               if any(kw in line for kw in ['🇭🇰', '🇨🇳', '🇸🇬', '🇯🇵', '🇺🇲', '🇰🇷', '🎥 奈飞节点']):
                   remaining.append((i, line))
 
           if remaining:
-              print(f"⚠️ 发现 {len(remaining)} 处残留：")
+              print(f"⚠️ 发现 {len(remaining)} 处地区分组残留：")
               for line_num, content in remaining:
                   print(f"  第 {line_num} 行: {content.strip()}")
               exit(1)
           else:
               print("✅ 所有地区分组及引用已完全清除！")
+
+          # 验证哔哩哔哩行
+          for i, line in enumerate(result_lines, 1):
+              if line.startswith("custom_proxy_group=📺 哔哩哔哩"):
+                  if "[]🚀 节点选择" in line:
+                      print(f"✅ 哔哩哔哩行已添加节点选择选项")
+                      print(f"  第 {i} 行: {line.strip()}")
+                  else:
+                      print(f"⚠️ 哔哩哔哩行未找到节点选择选项")
+                      print(f"  第 {i} 行: {line.strip()}")
+                      exit(1)
+                  break
           PYEOF
 
       - name: Commit and push
@@ -102,6 +123,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Update ACL4SSR config: remove region groups [$(date -u +%Y-%m-%d)]"
+            git commit -m "Update ACL4SSR config: remove region groups + add Bilibili node select [$(date -u +%Y-%m-%d)]"
             git push
           fi
