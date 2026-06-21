@@ -23,7 +23,7 @@ jobs:
 
       - name: Remove region groups
         run: |
-          python3 << 'EOF'
+          python3 << 'PYEOF'
           import re
 
           input_file = "/tmp/ACL4SSR_Online_Full_AdblockPlus.ini"
@@ -32,26 +32,27 @@ jobs:
           with open(input_file, "r", encoding="utf-8") as f:
               lines = f.readlines()
 
-          # 需要移除的地区分组（custom_proxy_group 定义行）
-          region_group_patterns = [
-              r"^custom_proxy_group=🇭🇰 香港节点",
-              r"^custom_proxy_group=🇯🇵 日本节点",
-              r"^custom_proxy_group=🇺🇲 美国节点",
-              r"^custom_proxy_group=🇨🇳 台湾节点",
-              r"^custom_proxy_group=🇸🇬 狮城节点",
-              r"^custom_proxy_group=🇰🇷 韩国节点",
-              r"^custom_proxy_group=🎥 奈飞节点",
+          # 1. 地区分组定义行（需要完全删除的行）
+          region_group_defs = [
+              r"^custom_proxy_group=🇭🇰 香港节点.*",
+              r"^custom_proxy_group=🇯🇵 日本节点.*",
+              r"^custom_proxy_group=🇺🇲 美国节点.*",
+              r"^custom_proxy_group=🇨🇳 台湾节点.*",
+              r"^custom_proxy_group=🇸🇬 狮城节点.*",
+              r"^custom_proxy_group=🇰🇷 韩国节点.*",
+              r"^custom_proxy_group=🎥 奈飞节点.*",
           ]
 
-          # 需要移除的地区节点引用（在其他分组的 select 选项中）
+          # 2. 地区引用（需要移除的部分）
+          # 格式为 `[]🇭🇰 香港节点`（前面有反引号分隔符）
           region_refs = [
-              r"`\[\]🇭🇰 香港节点`",
-              r"`\[\]🇨🇳 台湾节点`",
-              r"`\[\]🇸🇬 狮城节点`",
-              r"`\[\]🇯🇵 日本节点`",
-              r"`\[\]🇺🇲 美国节点`",
-              r"`\[\]🇰🇷 韩国节点`",
-              r"`\[\]🎥 奈飞节点`",
+              r"`\[\]🇭🇰 香港节点",
+              r"`\[\]🇨🇳 台湾节点",
+              r"`\[\]🇸🇬 狮城节点",
+              r"`\[\]🇯🇵 日本节点",
+              r"`\[\]🇺🇲 美国节点",
+              r"`\[\]🇰🇷 韩国节点",
+              r"`\[\]🎥 奈飞节点",
           ]
 
           result_lines = []
@@ -59,43 +60,39 @@ jobs:
           for line in lines:
               # 跳过地区分组定义行
               skip = False
-              for pattern in region_group_patterns:
+              for pattern in region_group_defs:
                   if re.match(pattern, line):
                       skip = True
                       break
               if skip:
                   continue
-
-              # 移除其他分组中对地区节点的引用
-              cleaned_line = line
+              
+              # 移除地区引用（包括前面的反引号分隔符）
+              cleaned = line
               for ref in region_refs:
-                  cleaned_line = re.sub(ref, "", cleaned_line)
+                  cleaned = re.sub(ref, "", cleaned)
+              
+              result_lines.append(cleaned)
 
-              # 清理连续的空引号或多余的反引号分隔符
-              # 处理 `select`[]A``[]B` 这种情况 -> `select`[]A`[]B`
-              cleaned_line = re.sub(r"``+", "`", cleaned_line)
-
-              # 处理行尾多余的反引号
-              cleaned_line = re.sub(r"`+$", "", cleaned_line).rstrip() + "\n"
-
-              # 如果清理后行为空或只有换行，跳过
-              if cleaned_line.strip() == "":
-                  continue
-
-              result_lines.append(cleaned_line)
-
-          # 写入输出文件
           with open(output_file, "w", encoding="utf-8") as f:
               f.writelines(result_lines)
 
-          print(f"Processed and saved to {output_file}")
-          EOF
+          print(f"✅ 处理完成，已保存到 {output_file}")
 
-      - name: Verify output
-        run: |
-          echo "=== Output file content ==="
-          cat ACL4SSR_Online_Full_NoRegion.ini
-          echo "=== End of content ==="
+          # 验证：检查是否还有残留
+          remaining = []
+          for i, line in enumerate(result_lines, 1):
+              if any(kw in line for kw in ['🇭🇰', '🇨🇳', '🇸🇬', '🇯🇵', '🇺🇲', '🇰🇷', '🎥 奈飞节点']):
+                  remaining.append((i, line))
+
+          if remaining:
+              print(f"⚠️ 发现 {len(remaining)} 处残留：")
+              for line_num, content in remaining:
+                  print(f"  第 {line_num} 行: {content.strip()}")
+              exit(1)
+          else:
+              print("✅ 所有地区分组及引用已完全清除！")
+          PYEOF
 
       - name: Commit and push
         run: |
