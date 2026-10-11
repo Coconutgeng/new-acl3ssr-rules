@@ -1,0 +1,1 @@
+此规则皆在去除原来规则（https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/config/ACL4SSR_Online_Full_AdblockPlus.ini）中对地区分类导致用cf worker实现代理时没有地区分组时导致直接自动选direct导致分流错误
